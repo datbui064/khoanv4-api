@@ -56,6 +56,48 @@ namespace KhoaNVCB_API.Controllers
             }
         }
 
+        // ==========================================
+        // TÍNH NĂNG MỚI: ÔN TẬP (PRACTICE MODE)
+        // ==========================================
+
+        [HttpGet("practice/{categoryId}/{count}")]
+        public async Task<IActionResult> GetPracticeQuestions(int categoryId, int count)
+        {
+            if (count <= 0) count = 10;
+
+            IQueryable<Question> query = _context.Questions;
+
+            // Nếu categoryId > 0 thì lọc theo chủ đề, nếu = 0 thì lấy ngẫu nhiên toàn bộ ngân hàng
+            if (categoryId > 0)
+            {
+                query = query.Where(q => q.CategoryId == categoryId);
+            }
+
+            var questions = await query
+                .OrderBy(q => Guid.NewGuid())
+                .Take(count)
+                .Select(q => new {
+                    q.QuestionId,
+                    q.Content,
+                    q.OptionA,
+                    q.OptionB,
+                    q.OptionC,
+                    q.OptionD,
+                    q.CorrectAnswer
+                })
+                .ToListAsync();
+
+            if (!questions.Any())
+                return NotFound("Không tìm thấy câu hỏi nào trong chủ đề này.");
+
+            return Ok(new
+            {
+                CategoryName = _context.Categories.FirstOrDefault(c => c.CategoryId == categoryId)?.CategoryName,
+                TotalRequested = count,
+                Questions = questions
+            });
+        }
+
         [HttpGet("sessions")]
         public async Task<IActionResult> GetAllSessions()
         {
@@ -262,6 +304,22 @@ namespace KhoaNVCB_API.Controllers
                     return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Template_NhapCauHoi.xlsx");
                 }
             }
+        }
+
+        //xóa nhiều câu hỏi
+        [HttpPost("/api/Quizzes/questions/bulk-delete")] // Thêm dấu gạch chéo ở đầu để ép route tuyệt đối
+        public async Task<IActionResult> BulkDeleteQuestions([FromBody] List<int> ids)
+        {
+            if (ids == null || !ids.Any()) return BadRequest("Danh sách ID trống.");
+
+            var questionsToDelete = await _context.Questions.Where(q => ids.Contains(q.QuestionId)).ToListAsync();
+
+            if (!questionsToDelete.Any()) return NotFound("Không tìm thấy câu hỏi nào để xóa.");
+
+            _context.Questions.RemoveRange(questionsToDelete);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = $"Đã xóa thành công {questionsToDelete.Count} câu hỏi." });
         }
 
         [HttpPost("import/{categoryId}")]

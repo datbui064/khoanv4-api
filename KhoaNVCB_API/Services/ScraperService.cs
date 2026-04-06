@@ -275,7 +275,7 @@ namespace KhoaNVCB_API.Services
                         string imageUrl = mediaGroup?.Elements().FirstOrDefault(e => e.Name.LocalName == "thumbnail")?.Attribute("url")?.Value ?? "";
 
                         // TRIỆU HỒI AI KIỂM DUYỆT
-                        bool isRelevant = await _geminiService.IsRelevantToSecurityAsync(title, description);
+                        bool isRelevant = await _geminiService.IsRelevantToSecurityAsync(title, rssUrl);
                         await Task.Delay(4000); // Nghỉ 4s
 
                         if (!isRelevant)

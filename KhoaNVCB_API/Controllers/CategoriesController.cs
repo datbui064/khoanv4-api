@@ -125,75 +125,72 @@ namespace KhoaNVCB_API.Controllers
             return NoContent();
         }
 
+        private bool CategoryExists(int id)
+        {
+            throw new NotImplementedException();
+        }
+
         // DELETE: api/Categories/5
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteCategory(int id)
         {
-            // 1. Tìm chuyên mục gốc (thằng Cha)
-            var category = await _context.Categories.FindAsync(id);
-            if (category == null)
+            var strategy = _context.Database.CreateExecutionStrategy();
+
+            return await strategy.ExecuteAsync<IActionResult>(async () =>
             {
-                return NotFound("Không tìm thấy chuyên mục.");
-            }
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var category = await _context.Categories.FindAsync(id);
+                    if (category == null) return NotFound("Không tìm thấy chuyên mục.");
 
-            // 2. Gom tất cả ID chuyên mục (Cha + Con)
-            var childCategories = await _context.Categories.Where(c => c.ParentId == id).ToListAsync();
-            var categoryIdsToDelete = childCategories.Select(c => c.CategoryId).ToList();
-            categoryIdsToDelete.Add(id); // Thêm ID của thằng Cha vào danh sách
+                    // Tìm danh sách ID chuyên mục con
+                    var childIds = await _context.Categories
+                        .Where(c => c.ParentId == id)
+                        .Select(c => c.CategoryId)
+                        .ToListAsync();
 
-            // 3. Gom tất cả Bài viết thuộc các chuyên mục này
-            var postsToDelete = await _context.Posts
-                .Where(p => p.CategoryId.HasValue && categoryIdsToDelete.Contains(p.CategoryId.Value))
-                .ToListAsync();
-            var postIdsToDelete = postsToDelete.Select(p => p.PostId).ToList();
+                    // Tổng hợp tất cả ID cần xóa (Cha + Con)
+                    var allIds = new List<int> { id };
+                    allIds.AddRange(childIds);
 
-            // 4. Gom tất cả Bình luận thuộc về các Bài viết sắp bị xóa
-            var commentsToDelete = await _context.Comments
-                .Where(c => postIdsToDelete.Contains((int)c.PostId))
-                .ToListAsync();
+                    // 1. Xóa Questions (Dùng Try-Catch riêng để tránh lỗi nếu bảng chưa có)
+                    try
+                    {
+                        var questions = await _context.Questions.Where(q => allIds.Contains(q.CategoryId)).ToListAsync();
+                        if (questions.Any()) _context.Questions.RemoveRange(questions);
+                    }
+                    catch { /* Bỏ qua nếu bảng Questions chưa tồn tại */ }
 
-            // 5. Gom tất cả Câu hỏi trắc nghiệm thuộc các chuyên mục này (Nếu có)
-            var questionsToDelete = await _context.Questions
-                .Where(q => categoryIdsToDelete.Contains(q.CategoryId))
-                .ToListAsync();
+                    // 2. Xóa Posts và Comments
+                    var posts = await _context.Posts.Where(p => p.CategoryId.HasValue && allIds.Contains(p.CategoryId.Value)).ToListAsync();
+                    var postIds = posts.Select(p => p.PostId).ToList();
 
-            // KÍCH HOẠT GIAO DỊCH (TRANSACTION)
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // THÚC ĐẨY QUÁ TRÌNH "NHỔ CỎ TẬN GỐC" (Phải xóa theo thứ tự TỪ DƯỚI LÊN TRÊN)
+                    var comments = await _context.Comments.Where(c => c.PostId.HasValue && postIds.Contains(c.PostId.Value)).ToListAsync();
 
-                // Tầng 1: Xóa râu ria (Bình luận + Câu hỏi)
-                if (commentsToDelete.Any()) _context.Comments.RemoveRange(commentsToDelete);
-                if (questionsToDelete.Any()) _context.Questions.RemoveRange(questionsToDelete);
+                    if (comments.Any()) _context.Comments.RemoveRange(comments);
+                    if (posts.Any()) _context.Posts.RemoveRange(posts);
 
-                // Tầng 2: Xóa Bài viết
-                if (postsToDelete.Any()) _context.Posts.RemoveRange(postsToDelete);
+                    // 3. Xóa chuyên mục con
+                    var childCats = await _context.Categories.Where(c => childIds.Contains(c.CategoryId)).ToListAsync();
+                    if (childCats.Any()) _context.Categories.RemoveRange(childCats);
 
-                // Tầng 3: Xóa Chuyên mục con
-                if (childCategories.Any()) _context.Categories.RemoveRange(childCategories);
+                    // 4. Xóa chuyên mục cha
+                    _context.Categories.Remove(category);
 
-                // Tầng 4: Xóa Chuyên mục cha (Trùm cuối)
-                _context.Categories.Remove(category);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
 
-                // Chốt sổ
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                // Nếu có lỗi, hoàn tác mọi thứ như chưa có chuyện gì xảy ra
-                await transaction.RollbackAsync();
-                return BadRequest($"Hủy diệt thất bại do lỗi CSDL: {ex.Message}");
-            }
-        }
-
-        private bool CategoryExists(int id)
-        {
-            return _context.Categories.Any(e => e.CategoryId == id);
+                    return NoContent();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    // Đây là nơi trả về lỗi 400 kèm nội dung lỗi
+                    return BadRequest($"Lỗi: {ex.Message} - {ex.InnerException?.Message}");
+                }
+            });
         }
     }
 }

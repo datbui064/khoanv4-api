@@ -184,25 +184,53 @@ namespace KhoaNVCB_API.Controllers
             return NoContent();
         }
 
+        private bool PostExists(int id)
+        {
+            throw new NotImplementedException();
+        }
+
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePost(int id)
         {
-            var post = await _context.Posts.FindAsync(id);
-            if (post == null)
+            var strategy = _context.Database.CreateExecutionStrategy();
+
+            return await strategy.ExecuteAsync<IActionResult>(async () =>
             {
-                return NotFound();
-            }
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var post = await _context.Posts
+                        .Include(p => p.Tags) // Bao gồm Tags để xóa liên kết
+                        .FirstOrDefaultAsync(p => p.PostId == id);
 
-            _context.Posts.Remove(post);
-            await _context.SaveChangesAsync();
+                    if (post == null) return NotFound();
 
-            return NoContent();
-        }
+                    // 1. Xóa các bình luận liên quan
+                    var comments = _context.Comments.Where(c => c.PostId == id);
+                    _context.Comments.RemoveRange(comments);
 
-        private bool PostExists(int id)
-        {
-            return _context.Posts.Any(e => e.PostId == id);
+                    // 2. Xóa các tài nguyên bên ngoài (ExternalResources)
+                    var resources = _context.ExternalResources.Where(r => r.PostId == id);
+                    _context.ExternalResources.RemoveRange(resources);
+
+                    // 3. Xóa liên kết trong bảng trung gian PostTags (EF Core tự làm nếu dùng .Include)
+                    post.Tags.Clear();
+
+                    // 4. Xóa chính bài viết
+                    _context.Posts.Remove(post);
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return NoContent();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(500, $"Lỗi xóa bài viết: {ex.Message}");
+                }
+            });
         }
     }
 }

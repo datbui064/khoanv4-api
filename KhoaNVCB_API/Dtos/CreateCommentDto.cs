@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿
+using System.ComponentModel.DataAnnotations;
 
 namespace KhoaNVCB_API.Dtos
 {
@@ -6,9 +7,19 @@ namespace KhoaNVCB_API.Dtos
     {
         [Required]
         public int PostId { get; set; }
-        [Required]
-        public int AccountId { get; set; }
-        [Required]
+
+        // BỎ DÒNG NÀY: public int AccountId { get; set; }
+
+        [Required(ErrorMessage = "Vui lòng nhập tên của bạn")]
+        public string FullName { get; set; } = null!;
+
+        [Required(ErrorMessage = "Vui lòng nhập Email")]
+        [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
+        public string Email { get; set; } = null!;
+
+        public string? Website { get; set; }
+
+        [Required(ErrorMessage = "Vui lòng nhập nội dung bình luận")]
         public string Content { get; set; } = null!;
     }
 }

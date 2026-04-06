@@ -1,24 +1,17 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System;
+using System.Collections.Generic;
 
-namespace KhoaNVCB_API.Models
+namespace KhoaNVCB_API.Models;
+
+public partial class QuizSetting
 {
-    public class QuizSetting
-    {
-        [Key]
-        public int SettingId { get; set; }
+    public int SettingId { get; set; }
 
-        [Required]
-        public int CategoryId { get; set; }
+    public int CategoryId { get; set; }
 
-        [Required]
-        public int QuestionCount { get; set; } = 20;
+    public int QuestionCount { get; set; }
 
-        [Required]
-        public int TimeLimitMinutes { get; set; } = 15;
+    public int TimeLimitMinutes { get; set; }
 
-        // Nếu có bảng Category, bỏ comment 2 dòng dưới để tạo liên kết (Foreign Key)
-         [ForeignKey("CategoryId")]
-        public Category? Category { get; set; }
-    }
+    public virtual Category Category { get; set; } = null!;
 }

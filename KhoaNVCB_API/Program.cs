@@ -13,14 +13,19 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 // 2. Đăng ký DbContext và "bơm" chuỗi kết nối vào
 builder.Services.AddDbContext<KhoaNvcbBlogDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+    sqlServerOptionsAction: sqlOptions =>
+    {
+        sqlOptions.EnableRetryOnFailure(); // Thêm dòng này
+    }));
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("BlazorCorsPolicy", policy =>
     {
         policy.WithOrigins("https://sweet-twilight-be5f4e.netlify.app",
             "https://localhost:7129",
-            "https://anninhnoidia.netlify.app") // Giữ nguyên, không có gạch chéo cuối
+            "https://anninhnoidia.netlify.app",
+            "http://localhost:5198") // Giữ nguyên, không có gạch chéo cuối
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();

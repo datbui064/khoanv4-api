@@ -22,7 +22,6 @@ public partial class Post
     public string? SourceType { get; set; }
 
     public string? OriginalUrl { get; set; }
-    public string? ImageUrl { get; set; }
 
     public string? Status { get; set; }
 
@@ -31,6 +30,8 @@ public partial class Post
     public DateTime? UpdatedDate { get; set; }
 
     public DateTime? PublishedDate { get; set; }
+
+    public string? ImageUrl { get; set; }
 
     public virtual Account? Author { get; set; }
 

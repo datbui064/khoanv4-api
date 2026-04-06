@@ -2,9 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using KhoaNVCB_API.Models;
 using KhoaNVCB_API.Dtos;
-using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
-
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -20,17 +18,18 @@ namespace KhoaNVCB_API.Controllers
         }
 
         [HttpGet("post/{postId}")]
+        [AllowAnonymous] // Mở cửa tự do
         public async Task<ActionResult<IEnumerable<CommentDto>>> GetCommentsByPost(int postId)
         {
             var comments = await _context.Comments
-                .Include(c => c.Account)
+                // Đã xóa cái dòng .Include(c => c.Account) gây lỗi ở đây
                 .Where(c => c.PostId == postId && c.IsHidden == false)
                 .Select(c => new CommentDto
                 {
                     CommentId = c.CommentId,
                     PostId = (int)c.PostId,
-                    AccountId = (int)c.AccountId,
-                    FullName = c.Account != null ? c.Account.FullName : "Ẩn danh",
+                    // Lấy thẳng tên người dùng từ bảng Comments, không cần móc nối sang Accounts nữa
+                    FullName = c.FullName,
                     Content = c.Content,
                     CreatedDate = c.CreatedDate
                 })
@@ -40,13 +39,15 @@ namespace KhoaNVCB_API.Controllers
         }
 
         [HttpPost]
-        [Authorize]
+        [AllowAnonymous] // Mở cửa tự do
         public async Task<ActionResult<CommentDto>> PostComment(CreateCommentDto createDto)
         {
             var comment = new Comment
             {
                 PostId = createDto.PostId,
-                AccountId = createDto.AccountId,
+                FullName = createDto.FullName,
+                Email = createDto.Email,
+                Website = createDto.Website,
                 Content = createDto.Content,
                 CreatedDate = DateTime.Now,
                 IsHidden = false
@@ -55,14 +56,11 @@ namespace KhoaNVCB_API.Controllers
             _context.Comments.Add(comment);
             await _context.SaveChangesAsync();
 
-            var account = await _context.Accounts.FindAsync(createDto.AccountId);
-
             var commentDto = new CommentDto
             {
                 CommentId = comment.CommentId,
                 PostId = (int)comment.PostId,
-                AccountId = (int)comment.AccountId,
-                FullName = account != null ? account.FullName : "Ẩn danh",
+                FullName = comment.FullName,
                 Content = comment.Content,
                 CreatedDate = comment.CreatedDate
             };
@@ -71,7 +69,7 @@ namespace KhoaNVCB_API.Controllers
         }
 
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin")] // Xóa thì vẫn bắt buộc phải là Admin
         public async Task<IActionResult> DeleteComment(int id)
         {
             var comment = await _context.Comments.FindAsync(id);

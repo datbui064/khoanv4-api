@@ -1,8 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-
 using KhoaNVCB_API.Models;
-using ClosedXML.Excel; // Thư viện ma thuật xử lý Excel
+using ClosedXML.Excel;
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -18,31 +17,132 @@ namespace KhoaNVCB_API.Controllers
         }
 
         // ==========================================
-        // 1. API BỐC NGẪU NHIÊN CÂU HỎI (GIỮ NGUYÊN)
+        // KHU VỰC 1: QUẢN LÝ PHIÊN THI (CHO ADMIN)
         // ==========================================
-        // ==========================================
-        // 1. API BỐC NGẪU NHIÊN CÂU HỎI (CHO SINH VIÊN)
-        // ==========================================
-        [HttpGet("random/{categoryId}")]
-        public async Task<IActionResult> GetRandomQuestions(int categoryId)
+
+        [HttpPost("session")]
+        public async Task<IActionResult> CreateSession([FromBody] CreateSessionRequest req)
         {
-            int count = 20; // Mặc định là 20 câu
+            try
+            {
+                string newCode = Guid.NewGuid().ToString("N").Substring(0, 8).ToUpper();
+
+                var session = new QuizSession
+                {
+                    SessionName = req.SessionName ?? "Phiên thi mới",
+                    CategoryId = req.CategoryId > 0 ? req.CategoryId : null,
+                    QuestionCount = req.QuestionCount,
+                    TimeLimitMinutes = req.TimeLimitMinutes,
+                    SessionCode = newCode,
+                    IsActive = true,
+                    CreatedDate = DateTime.Now
+                };
+
+                _context.QuizSessions.Add(session);
+                await _context.SaveChangesAsync();
+
+                // Chỉ trả về dữ liệu phẳng để tránh lỗi JSON
+                return Ok(new
+                {
+                    session.SessionId,
+                    session.SessionCode,
+                    session.SessionName
+                });
+            }
+            catch (Exception ex)
+            {
+                // Trả về nội dung lỗi thực sự để bạn dễ debug
+                return StatusCode(500, ex.InnerException?.Message ?? ex.Message);
+            }
+        }
+
+        [HttpGet("sessions")]
+        public async Task<IActionResult> GetAllSessions()
+        {
+            var sessions = await _context.QuizSessions
+                .OrderByDescending(s => s.CreatedDate)
+                .Select(s => new {
+                    s.SessionId,
+                    s.SessionName,
+                    s.SessionCode,
+                    s.QuestionCount,
+                    s.TimeLimitMinutes,
+                    s.IsActive,
+                    s.CreatedDate,
+                    s.CategoryId
+                })
+                .ToListAsync();
+            return Ok(sessions);
+        }
+        [HttpDelete("session/{id}")]
+        public async Task<IActionResult> DeleteSession(int id)
+        {
+            var session = await _context.QuizSessions.FindAsync(id);
+            if (session == null) return NotFound("Không tìm thấy phiên thi.");
+
+            // XÓA CỨNG: Xóa sạch bách toàn bộ lịch sử nộp bài của phiên này trước
+            var relatedAttempts = _context.QuizAttempts.Where(a => a.SessionId == id);
+            _context.QuizAttempts.RemoveRange(relatedAttempts);
+
+            // Sau đó mới trảm cái Phiên thi
+            _context.QuizSessions.Remove(session);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+        [HttpPut("session/{id}/toggle")]
+        public async Task<IActionResult> ToggleSession(int id)
+        {
+            var session = await _context.QuizSessions.FindAsync(id);
+            if (session == null) return NotFound();
+
+            session.IsActive = !session.IsActive; // Đảo trạng thái (Đóng/Mở)
+            await _context.SaveChangesAsync();
+            return Ok(session);
+        }
+
+        [HttpGet("session/{sessionId}/history")]
+        public async Task<IActionResult> GetSessionHistory(int sessionId)
+        {
+            var history = await _context.QuizAttempts
+                .Where(a => a.SessionId == sessionId)
+                .OrderByDescending(a => a.CorrectAnswers) // Xếp hạng từ cao xuống thấp
+                .Select(a => new
+                {
+                    a.AttemptId,
+                    a.FullName,
+                    a.StudentIdOrEmail,
+                    a.ClassName,
+                    a.TotalQuestions,
+                    a.CorrectAnswers,
+                    a.AttemptDate
+                })
+                .ToListAsync();
+            return Ok(history);
+        }
+
+        // ==========================================
+        // KHU VỰC 2: TƯƠNG TÁC THI CỬ (CHO SINH VIÊN)
+        // ==========================================
+
+        [HttpGet("join/{sessionCode}")]
+        public async Task<IActionResult> GetQuizBySessionCode(string sessionCode)
+        {
+            var session = await _context.QuizSessions.FirstOrDefaultAsync(s => s.SessionCode == sessionCode);
+            if (session == null) return NotFound("Mã phiên thi không tồn tại.");
+
+            // Nếu Admin đã đóng thì sinh viên không lấy được đề
+            if (session.IsActive == false) return BadRequest("Phiên thi này đã kết thúc.");
 
             IQueryable<Question> query = _context.Questions;
-
-            // Nếu > 0 tức là thi theo chuyên đề. Nếu = 0 là thi Tổng hợp (trộn tất cả)
-            if (categoryId > 0)
+            if (session.CategoryId.HasValue && session.CategoryId > 0)
             {
-                var setting = await _context.QuizSettings.FirstOrDefaultAsync(s => s.CategoryId == categoryId);
-                if (setting != null) count = setting.QuestionCount;
-
-                query = query.Where(q => q.CategoryId == categoryId); // Lọc theo chuyên đề
+                query = query.Where(q => q.CategoryId == session.CategoryId.Value);
             }
 
             var questions = await query
-                .OrderBy(q => Guid.NewGuid()) // Xáo trộn ngẫu nhiên
-                .Take(count)
-                // Tuyệt đối không Select cột CorrectAnswer để chống hack F12
+                .OrderBy(q => Guid.NewGuid()) // Bốc ngẫu nhiên (mỗi người 1 đề khác nhau)
+                .Take(session.QuestionCount)
                 .Select(q => new {
                     q.QuestionId,
                     q.Content,
@@ -53,13 +153,11 @@ namespace KhoaNVCB_API.Controllers
                 })
                 .ToListAsync();
 
-            if (!questions.Any()) return NotFound("Không có câu hỏi nào trong ngân hàng.");
-            return Ok(questions);
+            if (!questions.Any()) return BadRequest("Ngân hàng không đủ câu hỏi.");
+
+            return Ok(new { Session = session, Questions = questions });
         }
 
-        // ==========================================
-        // 2. API CHẤM ĐIỂM VÀ LƯU LỊCH SỬ THI
-        // ==========================================
         [HttpPost("submit")]
         public async Task<IActionResult> SubmitQuiz([FromBody] SubmitQuizRequest request)
         {
@@ -71,60 +169,44 @@ namespace KhoaNVCB_API.Controllers
                     score++;
             }
 
-            // Lưu lịch sử bài làm vào Database
+            // Lưu lịch sử bài làm vào Database (Theo form mới)
             var attempt = new QuizAttempt
             {
-                AccountId = request.AccountId,
+                SessionId = request.SessionId,
                 CategoryId = request.CategoryId,
+                FullName = request.FullName,
+                StudentIdOrEmail = request.StudentIdOrEmail,
+                ClassName = request.ClassName,
                 TotalQuestions = request.Answers.Count,
                 CorrectAnswers = score,
                 AttemptDate = DateTime.Now
             };
+
             _context.QuizAttempts.Add(attempt);
             await _context.SaveChangesAsync();
 
-            return Ok(new { TotalQuestions = request.Answers.Count, CorrectAnswers = score, Message = $"Bạn trả lời đúng {score}/{request.Answers.Count} câu!" });
+            return Ok(new
+            {
+                TotalQuestions = request.Answers.Count,
+                CorrectAnswers = score,
+                Message = $"Tuyệt vời! Bạn trả lời đúng {score}/{request.Answers.Count} câu!"
+            });
         }
 
         // ==========================================
-        // 8. API LẤY LỊCH SỬ THI (CHO ADMIN)
+        // KHU VỰC 3: QUẢN LÝ NGÂN HÀNG CÂU HỎI (CRUD & EXCEL)
         // ==========================================
-        [HttpGet("history")]
-        public async Task<IActionResult> GetQuizHistory()
-        {
-            // Kết hợp (Join) 3 bảng để lấy Tên Sinh Viên và Tên Chuyên Đề
-            var history = await (from a in _context.QuizAttempts
-                                 join acc in _context.Accounts on a.AccountId equals acc.AccountId
-                                 join cat in _context.Categories on a.CategoryId equals cat.CategoryId into catGroup
-                                 from c in catGroup.DefaultIfEmpty()
-                                 orderby a.AttemptDate descending
-                                 select new
-                                 {
-                                     a.AttemptId,
-                                     FullName = acc.FullName,
-                                     CategoryName = c != null ? c.CategoryName : "Bài thi Tổng hợp",
-                                     a.TotalQuestions,
-                                     a.CorrectAnswers,
-                                     a.AttemptDate
-                                 }).ToListAsync();
-            return Ok(history);
-        }
-        // ==========================================
-        // 5. API LẤY DANH SÁCH CÂU HỎI THEO CHUYÊN MỤC (CHO ADMIN)
-        // ==========================================
+
         [HttpGet("category/{categoryId}")]
         public async Task<IActionResult> GetQuestionsByCategory(int categoryId)
         {
             var questions = await _context.Questions
                 .Where(q => q.CategoryId == categoryId)
-                .OrderByDescending(q => q.QuestionId) // Câu mới import sẽ hiện lên đầu
+                .OrderByDescending(q => q.QuestionId)
                 .ToListAsync();
-
             return Ok(questions);
         }
-        // ==========================================
-        // 6. API SỬA CÂU HỎI
-        // ==========================================
+
         [HttpPut("question/{id}")]
         public async Task<IActionResult> UpdateQuestion(int id, [FromBody] Question updatedQuestion)
         {
@@ -133,7 +215,6 @@ namespace KhoaNVCB_API.Controllers
             var question = await _context.Questions.FindAsync(id);
             if (question == null) return NotFound("Không tìm thấy câu hỏi.");
 
-            // Cập nhật dữ liệu
             question.Content = updatedQuestion.Content;
             question.OptionA = updatedQuestion.OptionA;
             question.OptionB = updatedQuestion.OptionB;
@@ -145,9 +226,6 @@ namespace KhoaNVCB_API.Controllers
             return NoContent();
         }
 
-        // ==========================================
-        // 7. API XÓA CÂU HỎI
-        // ==========================================
         [HttpDelete("question/{id}")]
         public async Task<IActionResult> DeleteQuestion(int id)
         {
@@ -158,17 +236,13 @@ namespace KhoaNVCB_API.Controllers
             await _context.SaveChangesAsync();
             return NoContent();
         }
-        // ==========================================
-        // 3. API TẠO VÀ TẢI FILE EXCEL MẪU (TEMPLATE)
-        // ==========================================
+
         [HttpGet("template")]
         public IActionResult DownloadTemplate()
         {
             using (var workbook = new XLWorkbook())
             {
                 var worksheet = workbook.Worksheets.Add("MauCauHoi");
-
-                // Tạo Header
                 worksheet.Cell(1, 1).Value = "Nội dung câu hỏi";
                 worksheet.Cell(1, 2).Value = "Đáp án A";
                 worksheet.Cell(1, 3).Value = "Đáp án B";
@@ -176,25 +250,20 @@ namespace KhoaNVCB_API.Controllers
                 worksheet.Cell(1, 5).Value = "Đáp án D";
                 worksheet.Cell(1, 6).Value = "Đáp án đúng (Chỉ nhập A, B, C hoặc D)";
 
-                // Trang trí Header cho chuyên nghiệp (In đậm, nền xám)
                 var headerRow = worksheet.Row(1);
                 headerRow.Style.Font.Bold = true;
                 headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
-                worksheet.Columns().AdjustToContents(); // Tự động dãn cột cho vừa chữ
+                worksheet.Columns().AdjustToContents();
 
                 using (var stream = new MemoryStream())
                 {
                     workbook.SaveAs(stream);
                     var content = stream.ToArray();
-                    // Trả về file Excel tải thẳng xuống máy
                     return File(content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Template_NhapCauHoi.xlsx");
                 }
             }
         }
 
-        // ==========================================
-        // 4. API ĐỌC FILE EXCEL ĐỂ LƯU VÀO DATABASE
-        // ==========================================
         [HttpPost("import/{categoryId}")]
         public async Task<IActionResult> ImportQuestionsFromExcel(int categoryId, IFormFile file)
         {
@@ -202,7 +271,7 @@ namespace KhoaNVCB_API.Controllers
             if (!file.FileName.EndsWith(".xlsx")) return BadRequest("Chỉ hỗ trợ định dạng .xlsx");
 
             var questionsToAdd = new List<Question>();
-            int rowIndex = 1; // Biến đếm để báo lỗi chính xác ở dòng nào
+            int rowIndex = 1;
 
             try
             {
@@ -212,33 +281,25 @@ namespace KhoaNVCB_API.Controllers
                     using (var workbook = new XLWorkbook(stream))
                     {
                         var worksheet = workbook.Worksheet(1);
-                        var rows = worksheet.RangeUsed().RowsUsed().Skip(1); // Bỏ qua dòng Header đầu tiên
+                        var rows = worksheet.RangeUsed().RowsUsed().Skip(1);
 
                         foreach (var row in rows)
                         {
                             rowIndex++;
-
-                            // Lấy dữ liệu và làm sạch (Trim) khoảng trắng thừa
                             var content = row.Cell(1).GetString().Trim();
-                            if (string.IsNullOrEmpty(content)) continue; // Bỏ qua nếu dòng này trống nội dung
+                            if (string.IsNullOrEmpty(content)) continue;
 
                             var optA = row.Cell(2).GetString().Trim();
                             var optB = row.Cell(3).GetString().Trim();
                             var optC = row.Cell(4).GetString().Trim();
                             var optD = row.Cell(5).GetString().Trim();
-                            var correct = row.Cell(6).GetString().Trim().ToUpper(); // Ép viết hoa
+                            var correct = row.Cell(6).GetString().Trim().ToUpper();
 
-                            // Kiểm tra tính hợp lệ của Đáp án đúng
                             if (correct != "A" && correct != "B" && correct != "C" && correct != "D")
-                            {
                                 return BadRequest($"Lỗi ở dòng số {rowIndex}: 'Đáp án đúng' phải là A, B, C hoặc D. (Đang nhập: {correct})");
-                            }
 
-                            // Kiểm tra xem có thiếu đáp án nào không
                             if (string.IsNullOrEmpty(optA) || string.IsNullOrEmpty(optB) || string.IsNullOrEmpty(optC) || string.IsNullOrEmpty(optD))
-                            {
                                 return BadRequest($"Lỗi ở dòng số {rowIndex}: Không được để trống bất kỳ đáp án nào.");
-                            }
 
                             questionsToAdd.Add(new Question
                             {
@@ -269,10 +330,25 @@ namespace KhoaNVCB_API.Controllers
             }
         }
     }
+
+    // ==========================================
+    // KHU VỰC 4: DTOs TRUYỀN TẢI DỮ LIỆU
+    // ==========================================
+    public class CreateSessionRequest
+    {
+        public string SessionName { get; set; } = null!;
+        public int CategoryId { get; set; }
+        public int QuestionCount { get; set; }
+        public int TimeLimitMinutes { get; set; }
+    }
+
     public class SubmitQuizRequest
     {
-        public int AccountId { get; set; }
+        public int SessionId { get; set; }
         public int CategoryId { get; set; }
+        public string FullName { get; set; } = null!;
+        public string StudentIdOrEmail { get; set; } = null!;
+        public string ClassName { get; set; } = null!;
         public Dictionary<int, string> Answers { get; set; } = new();
     }
 }

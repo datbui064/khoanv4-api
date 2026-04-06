@@ -1,36 +1,25 @@
-﻿using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System;
+using System.Collections.Generic;
 
-namespace KhoaNVCB_API.Models
+namespace KhoaNVCB_API.Models;
+
+public partial class Question
 {
-    public class Question
-    {
-        [Key]
-        public int QuestionId { get; set; }
+    public int QuestionId { get; set; }
 
-        [Required]
-        public int CategoryId { get; set; }
+    public int CategoryId { get; set; }
 
-        [Required]
-        public string Content { get; set; } = string.Empty;
+    public string Content { get; set; } = null!;
 
-        [Required]
-        public string OptionA { get; set; } = string.Empty;
+    public string OptionA { get; set; } = null!;
 
-        [Required]
-        public string OptionB { get; set; } = string.Empty;
+    public string OptionB { get; set; } = null!;
 
-        [Required]
-        public string OptionC { get; set; } = string.Empty;
+    public string OptionC { get; set; } = null!;
 
-        [Required]
-        public string OptionD { get; set; } = string.Empty;
+    public string OptionD { get; set; } = null!;
 
-        [Required]
-        [MaxLength(1)] // Chỉ cho phép nhập 1 ký tự (A, B, C, D)
-        public string CorrectAnswer { get; set; } = string.Empty;
+    public string CorrectAnswer { get; set; } = null!;
 
-         [ForeignKey("CategoryId")]
-         public Category? Category { get; set; }
-    }
+    public virtual Category Category { get; set; } = null!;
 }

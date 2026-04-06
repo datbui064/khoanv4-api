@@ -8,6 +8,7 @@ namespace KhoaNVCB_API.Controllers
     public class PingController : ControllerBase
     {
         [HttpGet]
+        [HttpHead]
         [AllowAnonymous] // Phải có cái này để bot không bị chặn
         public IActionResult Get()
         {

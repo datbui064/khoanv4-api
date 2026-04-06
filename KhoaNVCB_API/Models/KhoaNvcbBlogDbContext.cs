@@ -34,7 +34,7 @@ public partial class KhoaNvcbBlogDbContext : DbContext
     public virtual DbSet<QuizSetting> QuizSettings { get; set; }
 
     public virtual DbSet<Tag> Tags { get; set; }
-    public DbSet<SupportTicket> SupportTickets { get; set; }
+    public virtual DbSet<SupportTicket> SupportTickets { get; set; }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
         => optionsBuilder.UseSqlServer("Server=sql5113.site4now.net;Database=db_ac7970_khoanv4;User Id=db_ac7970_khoanv4_admin;Password=12345678@NV4;TrustServerCertificate=True;");
@@ -220,6 +220,27 @@ public partial class KhoaNvcbBlogDbContext : DbContext
             entity.HasKey(e => e.TagId).HasName("PK__Tags__657CF9AC43487F5D");
 
             entity.Property(e => e.TagName).HasMaxLength(100);
+        });
+        modelBuilder.Entity<SupportTicket>(entity =>
+        {
+            entity.ToTable("SupportTicket");
+            entity.HasKey(e => e.TicketId);
+
+            entity.Property(e => e.FullName)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(e => e.ContactInfo)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("Pending");
+
+            entity.Property(e => e.CreatedAt)
+                .HasColumnType("datetime")
+                .HasDefaultValueSql("(getdate())");
         });
 
         OnModelCreatingPartial(modelBuilder);

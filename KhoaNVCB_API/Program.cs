@@ -24,7 +24,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("https://sweet-twilight-be5f4e.netlify.app",
             "https://localhost:7129",
-            "https://anninhnoidia.netlify.app",
+            "https://khoaanctnb.netlify.app",
             "http://localhost:5198") // Giữ nguyên, không có gạch chéo cuối
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -35,6 +35,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<ScraperService>();
 builder.Services.AddHttpClient<GeminiService>();
 builder.Services.AddControllers();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

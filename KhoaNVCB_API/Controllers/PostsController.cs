@@ -75,41 +75,30 @@ namespace KhoaNVCB_API.Controllers
 
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<PostDto>> PostPost(CreatePostDto createDto)
+        public async Task<ActionResult<IEnumerable<PostDto>>> GetRecentPosts(int count)
         {
-            var post = new Post
-            {
-                Title = createDto.Title,
-                Slug = createDto.Slug,
-                Summary = createDto.Summary,
-                Content = createDto.Content,
-                CategoryId = createDto.CategoryId,
-                OriginalUrl = createDto.OriginalUrl,
-                ImageUrl = createDto.ImageUrl, // MỚI THÊM: Lưu ảnh bìa vào CSDL
-                SourceType = createDto.SourceType ?? "Manual", // Sửa lại một chút để nó nhận đúng loại Video/Image
-                Status = "Published",
-                CreatedDate = DateTime.Now
-            };
+            var posts = await _context.Posts
+                .Include(p => p.Category)
+                .Where(p => p.Status == "Published") // Chỉ lấy bài đã xuất bản
+                .OrderByDescending(p => p.CreatedDate) // Mới nhất lên đầu
+                .Take(count) // Giới hạn số lượng (ví dụ: 6)
+                .Select(p => new PostDto
+                {
+                    PostId = p.PostId,
+                    Title = p.Title,
+                    Slug = p.Slug,
+                    Summary = p.Summary,
+                    Content = p.Content,
+                    CategoryName = p.Category != null ? p.Category.CategoryName : "Mới",
+                    SourceType = p.SourceType,
+                    OriginalUrl = p.OriginalUrl,
+                    ImageUrl = p.ImageUrl,
+                    Status = p.Status,
+                    CreatedDate = p.CreatedDate
+                })
+                .ToListAsync();
 
-            _context.Posts.Add(post);
-            await _context.SaveChangesAsync();
-
-            var postDto = new PostDto
-            {
-                PostId = post.PostId,
-                Title = post.Title,
-                Slug = post.Slug,
-                Summary = post.Summary,
-                Content = post.Content,
-                CategoryName = "",
-                SourceType = post.SourceType,
-                OriginalUrl = post.OriginalUrl,
-                ImageUrl = post.ImageUrl, // MỚI THÊM
-                Status = post.Status,
-                CreatedDate = post.CreatedDate
-            };
-
-            return CreatedAtAction(nameof(GetPost), new { id = post.PostId }, postDto);
+            return Ok(posts);
         }
 
         [HttpPost("extract-word")]
@@ -186,7 +175,7 @@ namespace KhoaNVCB_API.Controllers
 
         private bool PostExists(int id)
         {
-            throw new NotImplementedException();
+            return _context.Posts.Any(e => e.PostId == id);
         }
 
         [HttpDelete("{id}")]

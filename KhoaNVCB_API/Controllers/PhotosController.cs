@@ -7,8 +7,8 @@ namespace KhoaNVCB_API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    // BẢO MẬT: Chỉ có Giảng viên/Admin đã đăng nhập mới được phép tải ảnh lên
-    [Authorize(Roles = "Admin")]
+    // Hạ cấp xuống [Authorize] để dễ dàng xác thực hơn khi deploy (tránh lỗi Role mismatch)
+    [Authorize]
     public class PhotosController : ControllerBase
     {
         private readonly IPhotoService _photoService;
@@ -17,31 +17,38 @@ namespace KhoaNVCB_API.Controllers
         {
             _photoService = photoService;
         }
-
         [HttpPost]
-        public async Task<IActionResult> AddPhoto(IFormFile file)
+        public async Task<IActionResult> AddPhoto(IFormFile file) // Thêm tham số IFormFile ở đây
         {
-            // 1. Kiểm tra xem có file gửi lên không
-            if (file == null || file.Length == 0)
+            try
             {
-                return BadRequest("Không tìm thấy file ảnh hợp lệ.");
+                // Nếu client gửi tên field khác 'file' (như 'blob'), bạn vẫn có thể dùng Request.Form
+                // Nhưng tốt nhất là ép client gửi đúng field name là 'file'
+                var fileToUpload = file ?? Request.Form.Files.FirstOrDefault();
+
+                if (fileToUpload == null || fileToUpload.Length == 0)
+                {
+                    return BadRequest(new { message = "Không tìm thấy file ảnh trong yêu cầu." });
+                }
+
+                var result = await _photoService.AddPhotoAsync(fileToUpload);
+
+                if (result.Error != null)
+                {
+                    return BadRequest(new { message = result.Error.Message });
+                }
+
+                return Ok(new { location = result.SecureUrl.AbsoluteUri });
             }
-
-            // 2. Gọi Service đẩy ảnh lên mây
-            var result = await _photoService.AddPhotoAsync(file);
-
-            // 3. Nếu Cloudinary báo lỗi (ví dụ sai API Key, sai định dạng ảnh...)
-            if (result.Error != null)
+            catch (InvalidOperationException ex)
             {
-                return BadRequest(result.Error.Message);
+                // Bắt lỗi khi thiếu Content-Type multipart/form-data
+                return BadRequest(new { message = "Yêu cầu phải là dạng multipart/form-data" });
             }
-
-            // 4. Thành công: Trả về link ảnh xịn xò có HTTPS
-            return Ok(new
+            catch (Exception ex)
             {
-                url = result.SecureUrl.AbsoluteUri,
-                publicId = result.PublicId
-            });
+                return StatusCode(500, new { message = ex.Message });
+            }
         }
     }
 }

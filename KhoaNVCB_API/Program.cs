@@ -95,8 +95,11 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseHttpsRedirection();
-
-app.UseCors("BlazorCorsPolicy");
+// Ví dụ trong Program.cs của API
+app.UseCors(policy => policy
+    .AllowAnyOrigin() // Hoặc domain cụ thể của bạn
+    .AllowAnyMethod()
+    .AllowAnyHeader());
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

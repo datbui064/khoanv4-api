@@ -18,6 +18,7 @@ builder.Services.AddDbContext<KhoaNvcbBlogDbContext>(options =>
     {
         sqlOptions.EnableRetryOnFailure(); // Thêm dòng này
     }));
+builder.Configuration.AddJsonFile("secrets.json", optional: true, reloadOnChange: true);
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("BlazorCorsPolicy", policy =>
@@ -28,7 +29,8 @@ builder.Services.AddCors(options =>
             "http://localhost:5198") // Giữ nguyên, không có gạch chéo cuối
               .AllowAnyMethod()
               .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowCredentials()
+              .WithExposedHeaders("X-Pagination");
     });
 });
 // Đảm bảo có dòng này trước app.Run()
@@ -48,6 +50,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
         };
     });
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -86,21 +89,24 @@ builder.Services.AddScoped<KhoaNVCB_API.Services.IPhotoService, KhoaNVCB_API.Ser
 
 var app = builder.Build();
 
-// Đưa 2 dòng này ra ngoài, không nằm trong if (app.Environment.IsDevelopment()) nữa
+// 1. Swagger nên để đầu tiên để test API dễ dàng
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "KhoaNVCB API V1");
-    c.RoutePrefix = "swagger"; // Để truy cập qua /swagger
+    c.RoutePrefix = "swagger";
 });
 
+// 2. HttpsRedirection (Nếu bạn dùng HTTPS)
 app.UseHttpsRedirection();
-// Ví dụ trong Program.cs của API
-app.UseCors(policy => policy
-    .AllowAnyOrigin() // Hoặc domain cụ thể của bạn
-    .AllowAnyMethod()
-    .AllowAnyHeader());
+
+// 3. QUAN TRỌNG NHẤT: Cấu hình CORS với đúng tên Policy đã khai báo ở trên
+// Phải đặt TRƯỚC UseAuthentication và UseAuthorization
+app.UseCors("BlazorCorsPolicy");
+
 app.UseAuthentication();
 app.UseAuthorization();
+
 app.MapControllers();
+
 app.Run();

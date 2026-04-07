@@ -18,28 +18,22 @@ namespace KhoaNVCB_API.Controllers
         }
 
         [HttpGet]
-        [AllowAnonymous]
-        public async Task<ActionResult<IEnumerable<PostDto>>> GetPosts()
+        public async Task<ActionResult<IEnumerable<PostListItemDto>>> GetPosts()
         {
-            var posts = await _context.Posts
+            return await _context.Posts
                 .Include(p => p.Category)
-                .Select(p => new PostDto
+                .OrderByDescending(p => p.CreatedDate)
+                .Select(p => new PostListItemDto // Sử dụng DTO rút gọn
                 {
                     PostId = p.PostId,
                     Title = p.Title,
-                    Slug = p.Slug,
                     Summary = p.Summary,
-                    Content = p.Content,
                     CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
-                    SourceType = p.SourceType,
-                    OriginalUrl = p.OriginalUrl,
-                    ImageUrl = p.ImageUrl, // MỚI THÊM: Lấy ảnh bìa ra
+                    ImageUrl = p.ImageUrl,
                     Status = p.Status,
                     CreatedDate = p.CreatedDate
                 })
                 .ToListAsync();
-
-            return Ok(posts);
         }
 
         [HttpGet("{id}")]
@@ -75,31 +69,43 @@ namespace KhoaNVCB_API.Controllers
 
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        public async Task<ActionResult<IEnumerable<PostDto>>> GetRecentPosts(int count)
+        public async Task<ActionResult<PostDto>> PostPost(CreatePostDto createDto)
         {
-            var posts = await _context.Posts
-                .Include(p => p.Category)
-                .Where(p => p.Status == "Published") // Chỉ lấy bài đã xuất bản
-                .OrderByDescending(p => p.CreatedDate) // Mới nhất lên đầu
-                .Take(count) // Giới hạn số lượng (ví dụ: 6)
-                .Select(p => new PostDto
-                {
-                    PostId = p.PostId,
-                    Title = p.Title,
-                    Slug = p.Slug,
-                    Summary = p.Summary,
-                    Content = p.Content,
-                    CategoryName = p.Category != null ? p.Category.CategoryName : "Mới",
-                    SourceType = p.SourceType,
-                    OriginalUrl = p.OriginalUrl,
-                    ImageUrl = p.ImageUrl,
-                    Status = p.Status,
-                    CreatedDate = p.CreatedDate
-                })
-                .ToListAsync();
+            var post = new Post
+            {
+                Title = createDto.Title,
+                Slug = createDto.Slug,
+                Summary = createDto.Summary,
+                Content = createDto.Content,
+                CategoryId = createDto.CategoryId,
+                OriginalUrl = createDto.OriginalUrl,
+                ImageUrl = createDto.ImageUrl, // MỚI THÊM: Lưu ảnh bìa vào CSDL
+                SourceType = createDto.SourceType ?? "Manual", // Sửa lại một chút để nó nhận đúng loại Video/Image
+                Status = "Published",
+                CreatedDate = DateTime.Now
+            };
 
-            return Ok(posts);
+            _context.Posts.Add(post);
+            await _context.SaveChangesAsync();
+
+            var postDto = new PostDto
+            {
+                PostId = post.PostId,
+                Title = post.Title,
+                Slug = post.Slug,
+                Summary = post.Summary,
+                Content = post.Content,
+                CategoryName = "",
+                SourceType = post.SourceType,
+                OriginalUrl = post.OriginalUrl,
+                ImageUrl = post.ImageUrl, // MỚI THÊM
+                Status = post.Status,
+                CreatedDate = post.CreatedDate
+            };
+
+            return CreatedAtAction(nameof(GetPost), new { id = post.PostId }, postDto);
         }
+        
 
         [HttpPost("extract-word")]
         [Authorize(Roles = "Admin")]
@@ -175,9 +181,80 @@ namespace KhoaNVCB_API.Controllers
 
         private bool PostExists(int id)
         {
-            return _context.Posts.Any(e => e.PostId == id);
+            throw new NotImplementedException();
         }
+        [HttpGet("recent/{count}")]
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<PostDto>>> GetRecentPosts(int count)
+        {
+            return await _context.Posts
+                .AsNoTracking() // Tăng tốc độ đọc
+                .Where(p => p.Status == "Published")
+                .OrderByDescending(p => p.CreatedDate)
+                .Take(count)
+                .Select(p => new PostDto
+                {
+                    PostId = p.PostId,
+                    Title = p.Title,
+                    ImageUrl = p.ImageUrl, // Giả sử bạn có trường này
+                    CreatedDate = p.CreatedDate
+                    // TUYỆT ĐỐI KHÔNG select trường Content ở đây
+                })
+                .ToListAsync();
+        }
+        [HttpGet("paged")]
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<PostDto>>> GetPagedPosts(
+    int page = 1,
+    int pageSize = 10,
+    int? categoryId = null,
+    string? sourceType = null) // Thêm lọc theo loại
+        {
+            var query = _context.Posts.AsNoTracking()
+                .Where(p => p.Status == "Published");
 
+            if (categoryId.HasValue)
+            {
+                query = query.Where(p => p.CategoryId == categoryId);
+            }
+
+            // Lọc theo Video hoặc Article ngay tại SQL
+            if (!string.IsNullOrEmpty(sourceType))
+            {
+                if (sourceType == "videos")
+                    query = query.Where(p => p.SourceType == "Video");
+                else
+                    query = query.Where(p => p.SourceType != "Video");
+            }
+
+            var totalCount = await query.CountAsync();
+
+            var posts = await query
+                .Include(p => p.Category)
+                .OrderByDescending(p => p.CreatedDate)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new PostDto
+                {
+                    PostId = p.PostId,
+                    Title = p.Title,
+                    Summary = p.Summary,
+                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+                    ImageUrl = p.ImageUrl,
+                    OriginalUrl = p.OriginalUrl, // Để lấy ảnh nếu ImageUrl trống
+                    CreatedDate = p.CreatedDate,
+                    SourceType = p.SourceType
+                    // TUYỆT ĐỐI KHÔNG lấy Content ở đây để giảm dung lượng tải
+                })
+                .ToListAsync();
+
+            // Giữ nguyên phần Header Pagination của bạn
+            var metadata = new { totalCount, pageSize, currentPage = page };
+            Response.Headers.Add("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
+            Response.Headers.Add("Access-Control-Expose-Headers", "X-Pagination");
+
+            return Ok(posts);
+        }
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePost(int id)

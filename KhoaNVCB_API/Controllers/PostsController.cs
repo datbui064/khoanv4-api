@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using KhoaNVCB_API.Models;
 using KhoaNVCB_API.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -105,27 +106,60 @@ namespace KhoaNVCB_API.Controllers
 
             return CreatedAtAction(nameof(GetPost), new { id = post.PostId }, postDto);
         }
-        
+
 
         [HttpPost("extract-word")]
         [Authorize(Roles = "Admin")]
-        public IActionResult ExtractWordText(IFormFile file)
+        public IActionResult ExtractFileText(IFormFile file)
         {
             if (file == null || file.Length == 0) return BadRequest("File không tồn tại.");
-            if (!file.FileName.EndsWith(".docx")) return BadRequest("Chỉ hỗ trợ định dạng .docx");
+
+            var extension = Path.GetExtension(file.FileName).ToLower();
+            if (extension != ".docx" && extension != ".pdf")
+                return BadRequest("Chỉ hỗ trợ định dạng .docx và .pdf");
 
             try
             {
                 using (var stream = file.OpenReadStream())
                 {
-                    var converter = new Mammoth.DocumentConverter();
-                    var result = converter.ConvertToHtml(stream);
-                    return Ok(new { text = result.Value });
+                    // 1. NẾU LÀ FILE WORD (.docx)
+                    if (extension == ".docx")
+                    {
+                        var converter = new Mammoth.DocumentConverter();
+                        var result = converter.ConvertToHtml(stream);
+                        // Mammoth tự động tạo các thẻ <p>, <strong>,... rất chuẩn
+                        return Ok(new { text = result.Value });
+                    }
+                    // 2. NẾU LÀ FILE PDF (.pdf)
+                    else
+                    {
+                        using (var document = UglyToad.PdfPig.PdfDocument.Open(stream))
+                        {
+                            var textBuilder = new System.Text.StringBuilder();
+                            foreach (var page in document.GetPages())
+                            {
+                                // DÙNG THUẬT TOÁN ĐỌC TỌA ĐỘ ĐỂ GIỮ NGUYÊN DẤU CÁCH
+                                var pageText = ContentOrderTextExtractor.GetText(page);
+
+                                // Tách các đoạn văn bản (xuống dòng) và bọc vào thẻ <p> cho TinyMCE hiểu
+                                var paragraphs = pageText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                                foreach (var p in paragraphs)
+                                {
+                                    // Loại bỏ những đoạn rác chỉ có khoảng trắng
+                                    if (!string.IsNullOrWhiteSpace(p))
+                                    {
+                                        textBuilder.Append($"<p>{p}</p>");
+                                    }
+                                }
+                            }
+                            return Ok(new { text = textBuilder.ToString() });
+                        }
+                    }
                 }
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"Lỗi khi đọc file Word: {ex.Message}");
+                return StatusCode(500, $"Lỗi khi đọc file: {ex.Message}");
             }
         }
 

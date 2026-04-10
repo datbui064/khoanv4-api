@@ -15,7 +15,7 @@ public partial class QuizAttempt
 
     public DateTime? AttemptDate { get; set; }
 
-    public int SessionId { get; set; }
+    public int? SessionId { get; set; }
 
     public string FullName { get; set; } = null!;
 

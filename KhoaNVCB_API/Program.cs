@@ -26,7 +26,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("https://sweet-twilight-be5f4e.netlify.app",
             "https://localhost:7129",
             "https://khoaanctnb.netlify.app",
-            "http://localhost:5198",
+            "https://localhost:7240",
             "https://anninhchinhtrinoibo.netlify.app") // Giữ nguyên, không có gạch chéo cuối
               .AllowAnyMethod()
               .AllowAnyHeader()

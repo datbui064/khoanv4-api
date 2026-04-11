@@ -236,59 +236,7 @@ namespace KhoaNVCB_API.Controllers
                 })
                 .ToListAsync();
         }
-        [HttpGet("paged")]
-        [AllowAnonymous]
-        public async Task<ActionResult<IEnumerable<PostDto>>> GetPagedPosts(
-    int page = 1,
-    int pageSize = 10,
-    int? categoryId = null,
-    string? sourceType = null) // Thêm lọc theo loại
-        {
-            var query = _context.Posts.AsNoTracking()
-                .Where(p => p.Status == "Published");
-
-            if (categoryId.HasValue)
-            {
-                query = query.Where(p => p.CategoryId == categoryId);
-            }
-
-            // Lọc theo Video hoặc Article ngay tại SQL
-            if (!string.IsNullOrEmpty(sourceType))
-            {
-                if (sourceType == "videos")
-                    query = query.Where(p => p.SourceType == "Video");
-                else
-                    query = query.Where(p => p.SourceType != "Video");
-            }
-
-            var totalCount = await query.CountAsync();
-
-            var posts = await query
-                .Include(p => p.Category)
-                .OrderByDescending(p => p.CreatedDate)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(p => new PostDto
-                {
-                    PostId = p.PostId,
-                    Title = p.Title,
-                    Summary = p.Summary,
-                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
-                    ImageUrl = p.ImageUrl,
-                    OriginalUrl = p.OriginalUrl, // Để lấy ảnh nếu ImageUrl trống
-                    CreatedDate = p.CreatedDate,
-                    SourceType = p.SourceType
-                    // TUYỆT ĐỐI KHÔNG lấy Content ở đây để giảm dung lượng tải
-                })
-                .ToListAsync();
-
-            // Giữ nguyên phần Header Pagination của bạn
-            var metadata = new { totalCount, pageSize, currentPage = page };
-            Response.Headers.Add("X-Pagination", System.Text.Json.JsonSerializer.Serialize(metadata));
-            Response.Headers.Add("Access-Control-Expose-Headers", "X-Pagination");
-
-            return Ok(posts);
-        }
+ 
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePost(int id)
@@ -332,5 +280,134 @@ namespace KhoaNVCB_API.Controllers
                 }
             });
         }
+
+        [HttpGet("admin-paged")]
+        [Authorize(Roles = "Admin")]
+        public async Task<ActionResult<PagedResultDto<PostListItemDto>>> GetAdminPagedPosts(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 10,
+    [FromQuery] string? searchTerm = null,
+    [FromQuery] string? categoryName = null,
+    [FromQuery] string sortBy = "newest",
+    [FromQuery] string? status = null) // MỚI THÊM
+        {
+            var query = _context.Posts.Include(p => p.Category).AsNoTracking().AsQueryable();
+
+            // Lọc bỏ Tuyên truyền
+            query = query.Where(p => p.Category != null && p.Category.CategoryName != "Tuyên truyền");
+
+            // Lọc theo TRẠNG THÁI (MỚI THÊM)
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(p => p.Status == status);
+            }
+
+            // Tìm kiếm từ khóa
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                query = query.Where(p => p.Title.Contains(searchTerm));
+            }
+
+            // Lọc chuyên mục
+            if (!string.IsNullOrWhiteSpace(categoryName))
+            {
+                query = query.Where(p => p.Category != null && p.Category.CategoryName == categoryName);
+            }
+
+            // Sắp xếp
+            if (sortBy == "oldest") query = query.OrderBy(p => p.CreatedDate);
+            else if (sortBy == "title-az") query = query.OrderBy(p => p.Title);
+            else query = query.OrderByDescending(p => p.CreatedDate); // newest
+
+            // Phân trang
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var posts = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new PostListItemDto
+                {
+                    PostId = p.PostId,
+                    Title = p.Title,
+                    Summary = p.Summary,
+                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+                    ImageUrl = p.ImageUrl,
+                    Status = p.Status,
+                    CreatedDate = p.CreatedDate
+                }).ToListAsync();
+
+            return Ok(new PagedResultDto<PostListItemDto>
+            {
+                Items = posts,
+                TotalCount = totalCount,
+                CurrentPage = page,
+                TotalPages = totalPages > 0 ? totalPages : 1
+            });
+        }
+
+    [HttpGet("paged")]
+        [AllowAnonymous] // MỞ CỬA CHO TẤT CẢ MỌI NGƯỜI
+        public async Task<ActionResult<PagedResultDto<PostListItemDto>>> GetPublicPagedPosts(
+    [FromQuery] int page = 1,
+    [FromQuery] int pageSize = 5,
+    [FromQuery] string? searchTerm = null,
+    [FromQuery] string? categoryName = null,
+    [FromQuery] string sortBy = "newest")
+        {
+            var query = _context.Posts
+                .Include(p => p.Category)
+                .AsNoTracking()
+                .AsQueryable();
+
+            // BẮT BUỘC: Chỉ lấy bài viết đã xuất bản và không thuộc mục "Tuyên truyền"
+            query = query.Where(p => p.Status == "Published" &&
+                                    (p.Category == null || p.Category.CategoryName != "Tuyên truyền"));
+
+            // Tìm kiếm
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                query = query.Where(p => p.Title.Contains(searchTerm));
+            }
+
+            // Lọc chuyên mục
+            if (!string.IsNullOrWhiteSpace(categoryName))
+            {
+                query = query.Where(p => p.Category != null && p.Category.CategoryName == categoryName);
+            }
+
+            // Sắp xếp
+            if (sortBy == "title-az") query = query.OrderBy(p => p.Title);
+            else query = query.OrderByDescending(p => p.CreatedDate);
+
+            // Phân trang
+            var totalCount = await query.CountAsync();
+            var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
+
+            var posts = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(p => new PostListItemDto
+                {
+                    PostId = p.PostId,
+                    Title = p.Title,
+                    Summary = p.Summary,
+                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+                    ImageUrl = p.ImageUrl,
+                    Status = p.Status,
+                    CreatedDate = p.CreatedDate
+                })
+                .ToListAsync();
+
+            return Ok(new PagedResultDto<PostListItemDto>
+            {
+                Items = posts,
+                TotalCount = totalCount,
+                CurrentPage = page,
+                TotalPages = totalPages > 0 ? totalPages : 1
+            });
+        }
     }
 }
+        
+    

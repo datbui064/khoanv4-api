@@ -1,7 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+﻿using ClosedXML.Excel;
 using KhoaNVCB_API.Models;
-using ClosedXML.Excel;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -61,6 +62,7 @@ namespace KhoaNVCB_API.Controllers
         // ==========================================
 
         [HttpGet("practice/{categoryId}/{count}")]
+        [AllowAnonymous]
         public async Task<IActionResult> GetPracticeQuestions(int categoryId, int count)
         {
             if (count <= 0) count = 10;
@@ -146,8 +148,20 @@ namespace KhoaNVCB_API.Controllers
         [HttpGet("session/{sessionId}/history")]
         public async Task<IActionResult> GetSessionHistory(int sessionId)
         {
-            var history = await _context.QuizAttempts
-                .Where(a => a.SessionId == sessionId)
+            var query = _context.QuizAttempts.AsQueryable();
+
+            // Nếu truyền 0 -> Lấy bài thi tự do (SessionId is null)
+            // Nếu truyền khác 0 -> Lấy bài thi theo phòng
+            if (sessionId == 0)
+            {
+                query = query.Where(a => a.SessionId == null);
+            }
+            else
+            {
+                query = query.Where(a => a.SessionId == sessionId);
+            }
+
+            var history = await query
                 .OrderByDescending(a => a.CorrectAnswers) // Xếp hạng từ cao xuống thấp
                 .Select(a => new
                 {
@@ -160,6 +174,7 @@ namespace KhoaNVCB_API.Controllers
                     a.AttemptDate
                 })
                 .ToListAsync();
+
             return Ok(history);
         }
 
@@ -201,38 +216,63 @@ namespace KhoaNVCB_API.Controllers
         }
 
         [HttpPost("submit")]
+        [AllowAnonymous]
         public async Task<IActionResult> SubmitQuiz([FromBody] SubmitQuizRequest request)
         {
-            int score = 0;
-            foreach (var item in request.Answers)
+            try
             {
-                var question = await _context.Questions.FindAsync(item.Key);
-                if (question != null && question.CorrectAnswer.ToUpper() == item.Value.ToUpper())
-                    score++;
+                int score = 0;
+
+                // 1. Đảm bảo Answers không bị null (tránh lỗi vặt khi người dùng không chọn đáp án nào)
+                if (request.Answers == null)
+                {
+                    request.Answers = new Dictionary<int, string>();
+                }
+
+                foreach (var item in request.Answers)
+                {
+                    var question = await _context.Questions.FindAsync(item.Key);
+                    // 2. Kiểm tra cẩn thận null trước khi so sánh
+                    if (question != null && !string.IsNullOrEmpty(question.CorrectAnswer) && !string.IsNullOrEmpty(item.Value))
+                    {
+                        if (question.CorrectAnswer.ToUpper() == item.Value.ToUpper())
+                            score++;
+                    }
+                }
+
+                // 3. Lưu lịch sử bài làm vào Database (Kèm kiểm tra null cho các chuỗi)
+                var attempt = new QuizAttempt
+                {
+                    SessionId = request.SessionId,
+                    CategoryId = request.CategoryId,
+                    FullName = string.IsNullOrEmpty(request.FullName) ? "Khách" : request.FullName,
+                    StudentIdOrEmail = string.IsNullOrEmpty(request.StudentIdOrEmail) ? "N/A" : request.StudentIdOrEmail,
+                    ClassName = string.IsNullOrEmpty(request.ClassName) ? "N/A" : request.ClassName,
+                    TotalQuestions = request.Answers.Count,
+                    CorrectAnswers = score,
+                    AttemptDate = DateTime.Now
+                };
+
+                _context.QuizAttempts.Add(attempt);
+                await _context.SaveChangesAsync(); // 👈 Lỗi 500 thường nổ ra ở đúng dòng này
+
+                return Ok(new
+                {
+                    TotalQuestions = request.Answers.Count,
+                    CorrectAnswers = score,
+                    Message = $"Tuyệt vời! Bạn trả lời đúng {score}/{request.Answers.Count} câu!"
+                });
             }
-
-            // Lưu lịch sử bài làm vào Database (Theo form mới)
-            var attempt = new QuizAttempt
+            catch (Exception ex)
             {
-                SessionId = request.SessionId,
-                CategoryId = request.CategoryId,
-                FullName = request.FullName,
-                StudentIdOrEmail = request.StudentIdOrEmail,
-                ClassName = request.ClassName,
-                TotalQuestions = request.Answers.Count,
-                CorrectAnswers = score,
-                AttemptDate = DateTime.Now
-            };
-
-            _context.QuizAttempts.Add(attempt);
-            await _context.SaveChangesAsync();
-
-            return Ok(new
-            {
-                TotalQuestions = request.Answers.Count,
-                CorrectAnswers = score,
-                Message = $"Tuyệt vời! Bạn trả lời đúng {score}/{request.Answers.Count} câu!"
-            });
+                // 4. ÉP SERVER TRẢ VỀ LỖI CHI TIẾT ĐỂ BẮT BUG
+                string errorDetail = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
+                return StatusCode(500, new
+                {
+                    message = "Lỗi hệ thống khi lưu kết quả",
+                    loi_chi_tiet = errorDetail
+                });
+            }
         }
 
         // ==========================================
@@ -402,7 +442,7 @@ namespace KhoaNVCB_API.Controllers
 
     public class SubmitQuizRequest
     {
-        public int SessionId { get; set; }
+        public int? SessionId { get; set; }
         public int CategoryId { get; set; }
         public string FullName { get; set; } = null!;
         public string StudentIdOrEmail { get; set; } = null!;

@@ -4,6 +4,7 @@ using KhoaNVCB_API.Models;
 using KhoaNVCB_API.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
+using DocumentFormat.OpenXml.Bibliography;
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -286,9 +287,13 @@ namespace KhoaNVCB_API.Controllers
         public async Task<ActionResult<PagedResultDto<PostListItemDto>>> GetAdminPagedPosts(
     [FromQuery] int page = 1,
     [FromQuery] int pageSize = 10,
+
     [FromQuery] string? searchTerm = null,
     [FromQuery] string? categoryName = null,
+    [FromQuery] string? soucreType =null,
+
     [FromQuery] string sortBy = "newest",
+
     [FromQuery] string? status = null) // MỚI THÊM
         {
             var query = _context.Posts.Include(p => p.Category).AsNoTracking().AsQueryable();
@@ -324,18 +329,19 @@ namespace KhoaNVCB_API.Controllers
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
             var posts = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(p => new PostListItemDto
-                {
-                    PostId = p.PostId,
-                    Title = p.Title,
-                    Summary = p.Summary,
-                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
-                    ImageUrl = p.ImageUrl,
-                    Status = p.Status,
-                    CreatedDate = p.CreatedDate
-                }).ToListAsync();
+         .Skip((page - 1) * pageSize)
+         .Take(pageSize)
+         .Select(p => new PostListItemDto
+         {
+             PostId = p.PostId,
+             Title = p.Title,
+             Summary = p.Summary,
+             CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+             SourceType = p.SourceType, // THÊM DÒNG NÀY
+             ImageUrl = p.ImageUrl,
+             Status = p.Status,
+             CreatedDate = p.CreatedDate
+         }).ToListAsync();
 
             return Ok(new PagedResultDto<PostListItemDto>
             {
@@ -350,17 +356,15 @@ namespace KhoaNVCB_API.Controllers
         [AllowAnonymous] // MỞ CỬA CHO TẤT CẢ MỌI NGƯỜI
         public async Task<ActionResult<PagedResultDto<PostListItemDto>>> GetPublicPagedPosts(
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 5,
-        [FromQuery] string? searchTerm = null,
-        [FromQuery] string? categoryName = null,
-        [FromQuery] string sortBy = "newest")
-        {
-            var query = _context.Posts
-                .Include(p => p.Category)
-                .AsNoTracking()
-                .AsQueryable();
+    [FromQuery] int pageSize = 5,
+    [FromQuery] string? searchTerm = null,
+    [FromQuery] string? categoryName = null,
+    [FromQuery] string? sourceType = null, // THÊM DÒNG NÀY
+    [FromQuery] string sortBy = "newest")
 
-            // BẮT BUỘC: Chỉ lấy bài viết đã xuất bản và không thuộc mục "Tuyên truyền"
+        {
+            var query = _context.Posts.Include(p => p.Category).AsNoTracking().AsQueryable();
+
             query = query.Where(p => p.Status == "Published" &&
                                     (p.Category == null || p.Category.CategoryName != "Tuyên truyền"));
 
@@ -371,11 +375,29 @@ namespace KhoaNVCB_API.Controllers
             }
 
             // Lọc chuyên mục
-            if (!string.IsNullOrWhiteSpace(categoryName))
+            if (!string.IsNullOrWhiteSpace(sourceType))
             {
-                query = query.Where(p => p.Category != null && p.Category.CategoryName == categoryName);
+                // 1. Nếu là Document: Lấy cả Document và Law (Gộp)
+                if (sourceType == "Document")
+                {
+                    query = query.Where(p => p.SourceType == "Document" || p.SourceType == "Law");
+                }
+                // 2. Nếu là Law: CHỈ lấy Law (Tách riêng)
+                else if (sourceType == "Law")
+                {
+                    query = query.Where(p => p.SourceType == "Law");
+                }
+                // 3. Các loại khác (Video, Article...): Lấy chính xác loại đó
+                
+                else if (sourceType == "Video")
+                {
+                    query = query.Where(p => p.SourceType == "Video");
+                }
+                else if (sourceType == "Article")
+                {
+                    query = query.Where(p => p.SourceType == "Article");
+                }
             }
-
             // Sắp xếp
             if (sortBy == "title-az") query = query.OrderBy(p => p.Title);
             else query = query.OrderByDescending(p => p.CreatedDate);
@@ -385,26 +407,26 @@ namespace KhoaNVCB_API.Controllers
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
             var posts = await query
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(p => new PostListItemDto
-                {
-                    PostId = p.PostId,
-                    Title = p.Title,
-                    Summary = p.Summary,
-                    CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
-                    ImageUrl = p.ImageUrl,
-                    Status = p.Status,
-                    CreatedDate = p.CreatedDate
-                })
-                .ToListAsync();
+         .Skip((page - 1) * pageSize)
+         .Take(pageSize)
+         .Select(p => new PostListItemDto
+         {
+             PostId = p.PostId,
+             Title = p.Title,
+             Summary = p.Summary,
+             CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+             SourceType = p.SourceType, // QUAN TRỌNG: Phải gán trường này
+             ImageUrl = p.ImageUrl,
+             Status = p.Status,
+             CreatedDate = p.CreatedDate
+         }).ToListAsync();
 
             return Ok(new PagedResultDto<PostListItemDto>
             {
                 Items = posts,
                 TotalCount = totalCount,
                 CurrentPage = page,
-                TotalPages = totalPages > 0 ? totalPages : 1
+                TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             });
         }
     }

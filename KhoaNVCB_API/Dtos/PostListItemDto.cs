@@ -9,5 +9,6 @@
         public string? ImageUrl { get; set; }
         public string? Status { get; set; }
         public DateTime? CreatedDate { get; set; }
+        public string? SourceType { get; set; }
     }
 }

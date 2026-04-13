@@ -21,27 +21,41 @@ namespace KhoaNVCB_API.Services
             _cloudinary = new Cloudinary(acc);
         }
 
-        public async Task<ImageUploadResult> AddPhotoAsync(IFormFile file)
+        // 1. Thay đổi kiểu trả về từ ImageUploadResult thành UploadResult
+        public async Task<UploadResult> AddPhotoAsync(IFormFile file)
         {
-            var uploadResult = new ImageUploadResult();
+            if (file.Length == 0) return null;
 
-            if (file.Length > 0)
+            using var stream = file.OpenReadStream();
+            var extension = Path.GetExtension(file.FileName).ToLower();
+            var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".webp" };
+            bool isImage = imageExtensions.Contains(extension);
+
+            // 2. Khai báo biến kết quả chung
+            UploadResult result;
+
+            if (isImage)
             {
-                // Đọc file ảnh dưới dạng Stream
-                using var stream = file.OpenReadStream();
                 var uploadParams = new ImageUploadParams
                 {
                     File = new FileDescription(file.FileName, stream),
-                    // Tự động cắt cúp ảnh về tỉ lệ chuẩn, tập trung vào khuôn mặt/chi tiết chính
                     Transformation = new Transformation().Height(600).Width(800).Crop("fill").Gravity("face"),
-                    Folder = "KhoaNVCB" // Lưu vào một thư mục riêng trên mây cho gọn
+                    Folder = "KhoaNVCB"
                 };
-
-                // Đẩy lên mây
-                uploadResult = await _cloudinary.UploadAsync(uploadParams);
+                result = await _cloudinary.UploadAsync(uploadParams);
+            }
+            else
+            {
+                var uploadParams = new RawUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "KhoaNVCB"
+                };
+                result = await _cloudinary.UploadAsync(uploadParams);
             }
 
-            return uploadResult;
+            // 3. Trả về result (không cần ép kiểu thủ công nữa)
+            return result;
         }
 
         public async Task<DeletionResult> DeletePhotoAsync(string publicId)

@@ -386,7 +386,11 @@ namespace KhoaNVCB_API.Controllers
             {
                 query = query.Where(p => p.Title.Contains(searchTerm));
             }
-
+            if (!string.IsNullOrWhiteSpace(categoryName))
+            {
+                // Tìm những bài viết có tên Category khớp với tham số truyền vào
+                query = query.Where(p => p.Category != null && p.Category.CategoryName == categoryName);
+            }
             // Lọc chuyên mục
             if (!string.IsNullOrWhiteSpace(sourceType))
             {
@@ -424,19 +428,20 @@ namespace KhoaNVCB_API.Controllers
             var totalPages = (int)Math.Ceiling(totalCount / (double)pageSize);
 
             var posts = await query
-         .Skip((page - 1) * pageSize)
-         .Take(pageSize)
-         .Select(p => new PostListItemDto
-         {
-             PostId = p.PostId,
-             Title = p.Title,
-             Summary = p.Summary,
-             CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
-             SourceType = p.SourceType, // QUAN TRỌNG: Phải gán trường này
-             ImageUrl = p.ImageUrl,
-             Status = p.Status,
-             CreatedDate = p.CreatedDate
-         }).ToListAsync();
+     .Skip((page - 1) * pageSize)
+     .Take(pageSize)
+     .Select(p => new PostListItemDto
+     {
+         PostId = p.PostId,
+         Title = p.Title,
+         Summary = p.Summary,
+         CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
+         SourceType = p.SourceType,
+         ImageUrl = p.ImageUrl,
+         Status = p.Status,
+         YearType = p.YearType, // PHẢI THÊM DÒNG NÀY
+         CreatedDate = p.CreatedDate
+     }).ToListAsync();
 
             return Ok(new PagedResultDto<PostListItemDto>
             {

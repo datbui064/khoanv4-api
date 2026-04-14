@@ -33,6 +33,7 @@ namespace KhoaNVCB_API.Dtos
         public DateTime? UpdatedDate { get; set; }
 
         public DateTime? PublishedDate { get; set; }
+        public string? Data { get; set; }
 
         // Bổ sung thêm tên Category để hiển thị trên danh sách bài viết cho tiện
         public string? CategoryName { get; set; }

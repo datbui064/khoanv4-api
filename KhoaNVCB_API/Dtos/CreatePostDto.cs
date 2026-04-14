@@ -18,5 +18,6 @@ namespace KhoaNVCB_API.Dtos
         public string? Status { get; set; }
         public DateTime? PublishedDate { get; set; }
         public int? YearType { get; set; } // Thêm dòng này
+        public string? Data { get; set; } // Thêm dòng này
     }
 }

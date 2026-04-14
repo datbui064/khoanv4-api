@@ -22,6 +22,7 @@ public partial class Post
     public int? YearType { get; set; }
 
     public string? SourceType { get; set; }
+    public string? Data { get; set; }
 
     public string? OriginalUrl { get; set; }
 

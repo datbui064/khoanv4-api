@@ -59,6 +59,7 @@ namespace KhoaNVCB_API.Controllers
                     OriginalUrl = p.OriginalUrl,
                     ImageUrl = p.ImageUrl, // MỚI THÊM: Lấy ảnh bìa ra
                     Status = p.Status,
+                    Data = p.Data,
                     YearType = p.YearType,
                     CreatedDate = p.CreatedDate
                 })
@@ -88,6 +89,7 @@ namespace KhoaNVCB_API.Controllers
                 SourceType = createDto.SourceType ?? "Manual", // Sửa lại một chút để nó nhận đúng loại Video/Image
                 Status = "Published",
                 YearType = createDto.YearType, // Thêm dòng này
+                Data = createDto.Data,
                 CreatedDate = DateTime.Now
             };
 
@@ -106,6 +108,7 @@ namespace KhoaNVCB_API.Controllers
                 OriginalUrl = post.OriginalUrl,
                 ImageUrl = post.ImageUrl, // MỚI THÊM
                 Status = post.Status,
+                Data = post.Data,
                 YearType = createDto.YearType, // Thêm dòng này
                 CreatedDate = post.CreatedDate
             };
@@ -189,6 +192,7 @@ namespace KhoaNVCB_API.Controllers
             post.YearType = updateDto.YearType;
             post.Content = updateDto.Content;
             post.ImageUrl = updateDto.ImageUrl;
+            post.Data = updateDto.Data;
 
             // ---> 2 DÒNG MỚI ĐƯỢC THÊM VÀO ĐỂ NHẬN TRẠNG THÁI DUYỆT BÀI <---
             if (!string.IsNullOrEmpty(updateDto.Status))
@@ -352,6 +356,7 @@ namespace KhoaNVCB_API.Controllers
              SourceType = p.SourceType, // THÊM DÒNG NÀY
              ImageUrl = p.ImageUrl,
              Status = p.Status,
+
              CreatedDate = p.CreatedDate
          }).ToListAsync();
 

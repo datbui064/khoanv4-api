@@ -19,6 +19,8 @@ public partial class Post
 
     public int? AuthorId { get; set; }
 
+    public int? YearType { get; set; }
+
     public string? SourceType { get; set; }
 
     public string? OriginalUrl { get; set; }

@@ -24,6 +24,7 @@ namespace KhoaNVCB_API.Dtos
 
         // Nơi chứa Link YouTube hoặc Link Ảnh như chúng ta đã thống nhất
         public string? OriginalUrl { get; set; }
+        public int? YearType { get; set; }
 
         public string? Status { get; set; } = "Published";
 

@@ -10,5 +10,6 @@
         public string? Status { get; set; }
         public DateTime? CreatedDate { get; set; }
         public string? SourceType { get; set; }
+        public int? YearType { get; set; }
     }
 }

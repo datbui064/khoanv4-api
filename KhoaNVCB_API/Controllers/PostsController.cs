@@ -5,6 +5,7 @@ using KhoaNVCB_API.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 using DocumentFormat.OpenXml.Bibliography;
+using DocumentFormat.OpenXml.Math;
 
 namespace KhoaNVCB_API.Controllers
 {
@@ -33,6 +34,7 @@ namespace KhoaNVCB_API.Controllers
                     CategoryName = p.Category != null ? p.Category.CategoryName : "Chưa phân loại",
                     ImageUrl = p.ImageUrl,
                     Status = p.Status,
+                    YearType = p.YearType,
                     CreatedDate = p.CreatedDate
                 })
                 .ToListAsync();
@@ -57,6 +59,7 @@ namespace KhoaNVCB_API.Controllers
                     OriginalUrl = p.OriginalUrl,
                     ImageUrl = p.ImageUrl, // MỚI THÊM: Lấy ảnh bìa ra
                     Status = p.Status,
+                    YearType = p.YearType,
                     CreatedDate = p.CreatedDate
                 })
                 .FirstOrDefaultAsync();
@@ -84,6 +87,7 @@ namespace KhoaNVCB_API.Controllers
                 ImageUrl = createDto.ImageUrl, // MỚI THÊM: Lưu ảnh bìa vào CSDL
                 SourceType = createDto.SourceType ?? "Manual", // Sửa lại một chút để nó nhận đúng loại Video/Image
                 Status = "Published",
+                YearType = createDto.YearType, // Thêm dòng này
                 CreatedDate = DateTime.Now
             };
 
@@ -102,6 +106,7 @@ namespace KhoaNVCB_API.Controllers
                 OriginalUrl = post.OriginalUrl,
                 ImageUrl = post.ImageUrl, // MỚI THÊM
                 Status = post.Status,
+                YearType = createDto.YearType, // Thêm dòng này
                 CreatedDate = post.CreatedDate
             };
 
@@ -181,6 +186,8 @@ namespace KhoaNVCB_API.Controllers
             post.CategoryId = updateDto.CategoryId;
             post.SourceType = updateDto.SourceType;
             post.OriginalUrl = updateDto.OriginalUrl;
+            post.YearType = updateDto.YearType;
+            post.Content = updateDto.Content;
             post.ImageUrl = updateDto.ImageUrl;
 
             // ---> 2 DÒNG MỚI ĐƯỢC THÊM VÀO ĐỂ NHẬN TRẠNG THÁI DUYỆT BÀI <---
@@ -216,14 +223,18 @@ namespace KhoaNVCB_API.Controllers
 
         private bool PostExists(int id)
         {
-            throw new NotImplementedException();
+            return _context.Posts.Any(e => e.PostId == id);
         }
         [HttpGet("recent/{count}")]
         [AllowAnonymous]
         public async Task<ActionResult<IEnumerable<PostDto>>> GetRecentPosts(int count)
         {
+            // Đảm bảo count hợp lệ (ví dụ tối đa 20 bài)
+            if (count <= 0) count = 5;
+            if (count > 20) count = 20;
+
             return await _context.Posts
-                .AsNoTracking() // Tăng tốc độ đọc
+                .AsNoTracking()
                 .Where(p => p.Status == "Published")
                 .OrderByDescending(p => p.CreatedDate)
                 .Take(count)
@@ -231,9 +242,10 @@ namespace KhoaNVCB_API.Controllers
                 {
                     PostId = p.PostId,
                     Title = p.Title,
-                    ImageUrl = p.ImageUrl, // Giả sử bạn có trường này
-                    CreatedDate = p.CreatedDate
-                    // TUYỆT ĐỐI KHÔNG select trường Content ở đây
+                    // Đảm bảo ImageUrl khớp với dữ liệu ảnh đại diện bài viết
+                    ImageUrl = p.ImageUrl ?? p.OriginalUrl,
+                    CreatedDate = p.CreatedDate,
+                    CategoryName = p.Category != null ? p.Category.CategoryName : "Tin tức" // Thêm nếu cần hiển thị tag
                 })
                 .ToListAsync();
         }
@@ -359,7 +371,8 @@ namespace KhoaNVCB_API.Controllers
     [FromQuery] int pageSize = 5,
     [FromQuery] string? searchTerm = null,
     [FromQuery] string? categoryName = null,
-    [FromQuery] string? sourceType = null, // THÊM DÒNG NÀY
+    [FromQuery] string? sourceType = null,
+    [FromQuery] int? yearType = null,// THÊM DÒNG NÀY
     [FromQuery] string sortBy = "newest")
 
         {
@@ -397,6 +410,10 @@ namespace KhoaNVCB_API.Controllers
                 {
                     query = query.Where(p => p.SourceType == "Article");
                 }
+            }
+            if (yearType.HasValue)
+            {
+                query = query.Where(p => p.YearType == yearType.Value);
             }
             // Sắp xếp
             if (sortBy == "title-az") query = query.OrderBy(p => p.Title);

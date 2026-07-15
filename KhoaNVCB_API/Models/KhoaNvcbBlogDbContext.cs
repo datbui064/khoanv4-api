@@ -37,7 +37,7 @@ public partial class KhoaNvcbBlogDbContext : DbContext
     public virtual DbSet<SupportTicket> SupportTickets { get; set; }
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=sql5113.site4now.net;Database=db_ac7970_khoanv4;User Id=db_ac7970_khoanv4_admin;Password=12345678@NV4;TrustServerCertificate=True;");
+        => optionsBuilder.UseSqlServer("Server=SQL8006.site4now.net;Database=db_acc0e3_datbui123;User Id=db_acc0e3_datbui123_admin;Password=D@t01696420398;TrustServerCertificate=True;");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

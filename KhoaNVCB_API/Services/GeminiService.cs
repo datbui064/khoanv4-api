@@ -73,7 +73,7 @@ Câu hỏi của người dùng: {userMessage}";
         }
 
         // ========================================================
-        // HÀM 2: DÙNG ĐỂ KIỂM DUYỆT BÀI CÀO BÊN ADMIN (CŨ )
+        // HÀM 2: DÙNG ĐỂ KIỂM DUYỆT BÀI CÀO BÊN ADMIN (CŨ CỦA CỤC CỨT)
         // ========================================================
         public async Task<bool> IsRelevantToSecurityAsync(string title, string summary)
         {
@@ -86,14 +86,17 @@ Câu hỏi của người dùng: {userMessage}";
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={_apiKey}";
 
             string prompt = $@"
-Bạn là một chuyên gia kiểm duyệt nội dung của Khoa An ninh nội địa.
-Nhiệm vụ của bạn là đọc Tiêu đề và Tóm tắt dưới đây, sau đó đánh giá xem bài viết này CÓ THUỘC MỘT TRONG CÁC LĨNH VỰC SAU KHÔNG: 
-An ninh nội địa, phòng chống tội phạm, an ninh mạng, an ninh kinh tế, tôn giáo, dân tộc, chống khủng bố, phản động, hoặc bảo vệ Tổ quốc.
+Bạn là một Sĩ quan an ninh, chuyên gia phân tích dữ liệu chính trị nội bộ công an nhân dân.
+Nhiệm vụ của bạn là đọc Tiêu đề và Tóm tắt dưới đây, đánh giá xem bài viết/video này CÓ THUỘC MỘT TRONG CÁC LĨNH VỰC TRỌNG ĐIỂM SAU KHÔNG: 
+1. Hoạt động của các tổ chức phản động lưu vong, khủng bố (ví dụ: Việt Tân, Chính phủ quốc gia Việt Nam lâm thời, Triều đại Việt, Hội người Thượng vì công lý, BPSOS...).
+2. Các vụ án, phóng sự liên quan đến khủng bố, bạo loạn, lật đổ, chống phá Nhà nước.
+3. Đấu tranh bảo vệ nền tảng tư tưởng của Đảng, phản bác các quan điểm sai trái, luận điệu xuyên tạc, thù địch.
 
 Tiêu đề: {title}
 Tóm tắt: {summary}
 
-CHỈ TRẢ LỜI DUY NHẤT 1 TỪ: 'YES' (nếu có liên quan) hoặc 'NO' (nếu không liên quan).";
+Lưu ý: Loại bỏ các tin tức hình sự, đâm chém, cướp giật, tai nạn giao thông, hoặc tin quốc tế không liên quan đến an ninh quốc gia Việt Nam.
+CHỈ TRẢ LỜI DUY NHẤT 1 TỪ: 'YES' (nếu đúng trọng tâm trên) hoặc 'NO' (nếu không liên quan hoặc là tin rác).";
 
             var requestBody = new
             {
